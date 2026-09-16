@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title id="title">Picture unavailable. Neutral placeholder, not the NFT artwork.</title>
+  <path d="M17 14 42 17 66 11 91 16 120 12 146 20 142 49 149 76 143 104 147 142 116 147 91 143 67 149 42 143 14 147 18 114 11 90 17 62 12 38Z" fill="#fff5db" stroke="#201d19" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m33 33 92 5-4 69-94-5Z" fill="#e5d2ad" stroke="#201d19" stroke-width="4"/>
+  <circle cx="99" cy="54" r="9" fill="#ffd43f" stroke="#201d19" stroke-width="3"/>
+  <path d="m34 87 26-25 23 24 14-10 23 20" fill="none" stroke="#786b58" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m40 108 78-81" fill="none" stroke="#fff5db" stroke-width="14"/>
+  <path d="m40 108 78-81" fill="none" stroke="#c54135" stroke-width="6" stroke-linecap="round"/>
+  <text x="80" y="132" text-anchor="middle" fill="#201d19" font-family="Arial,sans-serif" font-size="13" font-weight="700" letter-spacing="1">NO PREVIEW</text>
+</svg>
