@@ -1,0 +1,42 @@
+{
+  "schema": "pit-promo-release-v1",
+  "cleared": true,
+  "rightsStatus": "CLEARED for same-origin publication on the landing page. Decision by the owner (Benjamin) on 2026-09-16: the landing page ships this teaser. The supplied music and footage are the owner's responsibility to publish; the build copies the media only while this manifest stays cleared.",
+  "video": "/promo/the-pit-promo.mp4",
+  "poster": "/promo/poster.jpg",
+  "videoBytes": 7011948,
+  "posterBytes": 116477,
+  "sha256": "90763e50c810350b8a893ed8a8252bd464a9b63edb4c83abc0823434f6288567",
+  "posterSha256": "9b96655a17f1fb8d4720ac76d64da422d662faca2f4fbb64b32c2c86f9f8cff6",
+  "durationSeconds": 30.016,
+  "width": 960,
+  "height": 720,
+  "fps": 30,
+  "frames": 900,
+  "posterAtSeconds": 25.483,
+  "posterWindow": {
+    "id": "last-two",
+    "start": 24.433333333333334,
+    "end": 26.533333333333335
+  },
+  "source": {
+    "file": "design/promo/output/v3/the-pit-promo-v3.mp4",
+    "sha256": "cb63c6c4231c9f8b40da85a21a70b06bd498abcbb1e50b437075a45224dc6677",
+    "bytes": 14841561,
+    "durationSeconds": 30
+  },
+  "encoder": {
+    "video": "libx264 high 4.0 yuv420p",
+    "crf": 24,
+    "maxrateKbit": 1900,
+    "audio": "aac 128k 48kHz stereo",
+    "attempts": [
+      {
+        "maxrateKbit": 1900,
+        "bytes": 7011948
+      }
+    ],
+    "faststart": true
+  },
+  "exportedAt": "2026-09-14T16:27:18.942Z"
+}

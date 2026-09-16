@@ -127,7 +127,7 @@ test('an existing unprepared note is preserved and gets an explicit warning with
   assert.equal(f.state.me.profile.note,profile.note);
   assert.equal(f.state.me.profile.policyId,null);
   assert.equal(f.posts.length,1);assert.equal(f.posts[0].path,'/api/fighter');
-  assert.match(f.statuses.at(-1),/still needs preparation.*explicitly save a blank note/);
+  assert.match(f.statuses.at(-1),/not prepared yet.*save your fighter again.*leave the note blank/);
 });
 
 test('the replay stays open until both the avatar save and refreshed profile are confirmed',async()=>{

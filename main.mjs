@@ -4,7 +4,7 @@ import {createArenaPlayer} from './arena-player.mjs';
 import {parseInscriptionList,importCollection} from './collection-import.mjs';
 import {setupOwnership} from './ownership-ui.mjs';
 import {mintProgress,mintProtocol,mintQuantity,batchMintEstimate,validateBatchMintQuote,mintRequestId,withMintLock} from './mint-state.mjs';
-import {entryReadiness,preparationState,fighterDraft,fighterChanges,createProfileRequestGate,brainAvailability} from './fighter-state.mjs';
+import {entryReadiness,preparationState,fighterDraft,fighterChanges,createProfileRequestGate} from './fighter-state.mjs';
 import {ultimateChoiceOptions,ultimateChoicePresentation} from './fighter-view.mjs';
 import {hasPendingJackpot} from './room-state.mjs';
 import {launchActions,launchCashCopy} from './launch-state.mjs';
@@ -13,7 +13,7 @@ import {createAvatarPicture,setAvatarImage} from './avatar-image.mjs';
 import {combatStats,describeEvent,phaseAt} from '/arena/readability.mjs';
 import {ultimateStatus} from '/arena/ultimate-art.mjs';
 import {HZ} from '/arena/core.mjs';
-import {composeSock,isValidKey} from '/sock/sock.js';
+import {composeSock,isValidKey} from '/sock/sock-any.js';
 
 const $=id=>document.getElementById(id);
 const state={config:null,me:null,rooms:[],room:null,launch:null,socks:null,mintDraft:null,mintRecoveryError:null,view:'play',busy:false,polling:false,replayRoom:null,renderedTick:-1,profileDirty:false,profileSaveUncertain:false,profileDraftRevision:0,preparation:null,preparationChecks:0};
@@ -45,7 +45,7 @@ const wallet=createWallet(()=>state.config,address=>{
   profileRequests.sessionChanged();
   state.socks=null;state.mintDraft=null;state.mintRecoveryError=null;
   $('connect').textContent=address?shortAddress(address):'Connect wallet';
-  if(!address||state.me?.address?.toLowerCase()!==address){state.me=null;state.profileDirty=false;state.profileSaveUncertain=false;state.profileDraftRevision++;state.preparation=null;state.preparationChecks=0;$('brain-receipt').hidden=true;renderMe();if(!address)status('The wallet changed. Connect again before a new action.');}
+  if(!address||state.me?.address?.toLowerCase()!==address){state.me=null;state.profileDirty=false;state.profileSaveUncertain=false;state.profileDraftRevision++;state.preparation=null;state.preparationChecks=0;$('save-status').textContent='';renderMe();if(!address)status('The wallet changed. Connect again before a new action.');}
 });
 for(const id of ['play-ultimate','fighter-ultimate']){$(id).replaceChildren();for(const choice of ultimateChoiceOptions)option($(id),choice.id,choice.name);}
 function readFighterDraft(){return fighterDraft({name:$('fighter-name').value,note:$('fighter-note').value,avatarId:$('fighter-avatar').value,ultimateChoice:$('fighter-ultimate').value});}
@@ -65,7 +65,7 @@ function renderUltimateChoices(){
     'Saved for your next entry. Already joined rooms keep their original spell.';
 }
 function editFighterDraft(){
-  state.profileDraftRevision++;
+  state.profileDraftRevision++;if(!state.saving)$('save-fighter').textContent=SAVE_LABEL;
   state.profileDirty=state.profileSaveUncertain||!state.me?.profile||fighterChanges(state.me.profile,readFighterDraft()).dirty;
   updateEntry();
 }
@@ -112,25 +112,21 @@ function updateEntry(){
   const launch=launchActions(state.launch,{connected:Boolean(wallet.address),configured:Boolean(state.config?.contracts?.sale)&&state.config?.features?.sale!==false,busy:state.busy});
   $('buy-pit').disabled=!launch.buy;
   for(const [id,capability] of [['launch-collect','collect'],['launch-refund','refund'],['launch-excess','excess'],['launch-graduate','graduate']]){$(id).hidden=!launchActions(state.launch,{connected:Boolean(wallet.address),configured:Boolean(state.config?.contracts?.sale)&&state.config?.features?.sale!==false})[capability];$(id).disabled=!launch[capability];}
-  $('save-fighter').disabled=!wallet.address||state.busy;
-  const pending=['queued','running'].includes(state.preparation?.status);
-  $('compile-note').disabled=!wallet.address||!$('fighter-note').value.trim()||!brainAvailability(state.config?.inference).available||state.profileDirty||pending||state.busy;
-  $('check-brain').hidden=!wallet.address||!pending;$('check-brain').disabled=state.busy;
+  $('save-fighter').disabled=!wallet.address||state.busy||state.saving;
   renderUltimateChoices();
 }
 function showPreparation(value,{resume=false}={}){
   const next=preparationState(value);if(!next)return;
   if(next.jobId!==state.preparation?.jobId||resume)state.preparationChecks=0;
-  state.preparation=next;$('brain-receipt').hidden=false;
-  $('brain-receipt').textContent=next.message+(next.receipt?.chargedWei!==undefined?'\nCharged: '+pit(next.receipt.chargedWei):'');
-  if(['queued','running'].includes(next.status))$('brain-status').textContent=next.status==='running'?'The brain is reading your saved note. You can leave this page; the request is saved.':'Your note is queued. You can leave this page and check the same request later. A blank saved note can still play for free.';
-  else $('brain-status').textContent=next.status==='ready'?'Your saved note is ready for the yard.':'Your note is not ready. No retry starts until you ask.';
+  state.preparation=next;
+  // Everything the brain does stays behind the save button: one short line says where the save stands.
+  $('save-status').textContent=['queued','running'].includes(next.status)?SAVING_MESSAGE:next.status==='ready'?'Saved.':'Saved, but your note could not be prepared: '+next.message+' Save again in a moment, or leave the note blank.';
   updateEntry();
 }
 async function checkPreparation({manual=false}={}){
   const job=state.preparation;if(!wallet.address||!job?.jobId||!['queued','running'].includes(job.status))return;
   if(manual)state.preparationChecks=0;
-  if(state.preparationChecks>=60){$('brain-status').textContent='Automatic checks have paused. Your saved request has not been cancelled. Check its answer below; this does not start another inference.';return;}
+  if(state.preparationChecks>=60){$('save-status').textContent='Still saving in the background. You can leave this page and come back later.';return;}
   state.preparationChecks++;
   const response=await api('/api/fighter/compile/'+encodeURIComponent(job.jobId));
   if(state.preparation?.jobId!==job.jobId)return;
@@ -140,7 +136,6 @@ async function checkPreparation({manual=false}={}){
 function renderMe(){
   const me=state.me;
   // The prepared plan read back in one plain sentence, then the warnings the compiler gave. No labels, no numbers.
-  {const p=me?.profile,plan=$('brain-plan');if(plan){const text=p?.readback?p.readback+(p.warnings?.length?'\n'+p.warnings.join('\n'):''):'';plan.hidden=!text;plan.textContent=text;}}
   $('wallet-balance').textContent=me?pit(me.balances?.pitWei)+' · '+units(me.balances?.ethWei,18,5)+' ETH':'Your wallet holds your coins.';
   $('admin-link').hidden=!me?.admin;$('admin-denied').hidden=Boolean(me?.admin);$('admin-panel').hidden=!me?.admin;
   const old=$('play-fighter').value;$('play-fighter').replaceChildren();
@@ -188,21 +183,45 @@ async function saveFighter({choiceOnly=false}={}){
   if(choiceOnly&&!changes.ultimate)return false;
   if(!$('fighter-form').reportValidity())return false;
   const session=profileRequests.beginSave(wallet.address),revision=state.profileDraftRevision;
-  state.profileDirty=true;updateEntry();
-  let response;
-  try { response=await post('/api/fighter',choiceOnly?{name:previous.name,note:previous.note,avatarId:previous.avatarId,ultimateChoice:draft.ultimateChoice}:draft); }
-  catch(error){if(profileRequests.sameSession(session,wallet.address)){state.profileSaveUncertain=true;state.profileDirty=true;updateEntry();}throw error;}
-  if(!profileRequests.sameSession(session,wallet.address))return false;
-  profileRequests.invalidateReads();
-  if(!response.profile||String(response.profile.id)!==String(previous.id)){state.profileSaveUncertain=true;state.profileDirty=true;updateEntry();throw new Error('The saved fighter could not be verified. Your draft is kept. Reload your fighter before entering.');}
-  const profile=response.profile,newerEdits=revision!==state.profileDraftRevision;
-  state.me={...state.me,profile,...(state.me.fighters?{fighters:state.me.fighters.map(f=>String(f.id)===String(profile.id)?profile:f)}:{})};
-  state.profileSaveUncertain=false;state.profileDirty=newerEdits&&fighterChanges(profile,readFighterDraft()).dirty;
-  if(fighterDraft(previous).note!==fighterDraft(profile).note){state.preparation=null;state.preparationChecks=0;$('brain-receipt').hidden=true;}
-  renderMe();
-  status(state.profileDirty?'Saved the submitted fighter. Your newer edits still need saving.':choiceOnly?'Ultimate saved. Your note and brain preparation are unchanged. No inference was requested.':!profile.note?.trim()?'Fighter saved. Your free random plan is ready.':profile.policyId?'Fighter saved. Your prepared note is ready to use.':'Fighter saved. Ask the brain to read your note before entry.');
-  return true;
+  // The button greys out and says so until the save and its background preparation are done: no second click, no doubt.
+  state.profileDirty=true;state.saving=true;$('save-fighter').textContent='SAVING…';$('save-status').textContent=SAVING_MESSAGE;updateEntry();
+  let response,saved=false;
+  try{
+    try { response=await post('/api/fighter',choiceOnly?{name:previous.name,note:previous.note,avatarId:previous.avatarId,ultimateChoice:draft.ultimateChoice}:draft); }
+    catch(error){if(profileRequests.sameSession(session,wallet.address)){state.profileSaveUncertain=true;state.profileDirty=true;}throw error;}
+    if(!profileRequests.sameSession(session,wallet.address))return false;
+    profileRequests.invalidateReads();
+    if(!response.profile||String(response.profile.id)!==String(previous.id)){state.profileSaveUncertain=true;state.profileDirty=true;throw new Error('The saved fighter could not be verified. Your draft is kept. Reload your fighter before entering.');}
+    const profile=response.profile,newerEdits=revision!==state.profileDraftRevision;
+    state.me={...state.me,profile,...(state.me.fighters?{fighters:state.me.fighters.map(f=>String(f.id)===String(profile.id)?profile:f)}:{})};
+    state.profileSaveUncertain=false;state.profileDirty=newerEdits&&fighterChanges(profile,readFighterDraft()).dirty;
+    if(fighterDraft(previous).note!==fighterDraft(profile).note){state.preparation=null;state.preparationChecks=0;}
+    renderMe();
+    if(response.preparation)showPreparation(response.preparation,{resume:true});
+    await followPreparation();
+    saved=true;
+    status(state.profileDirty?'Saved. Your newer edits still need saving.':choiceOnly?'Ultimate saved.':'Saved.');
+    return true;
+  } finally {
+    state.saving=false;
+    $('save-fighter').textContent=saved&&!state.profileDirty?'SAVED ✓':SAVE_LABEL;
+    if(!saved)$('save-status').textContent='';
+    updateEntry();
+  }
 }
+/** Follows a preparation started by the save for up to a minute; the page keeps polling after that. */
+async function followPreparation(){
+  for(let i=0;i<30&&['queued','running'].includes(state.preparation?.status);i++){
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    await checkPreparation({manual:true});
+  }
+  const pending=['queued','running'].includes(state.preparation?.status),profile=state.me?.profile;
+  if(pending)$('save-status').textContent='Still saving in the background. You can leave this page and come back later.';
+  else if(state.preparation?.status==='failed')$('save-status').textContent='Saved, but your note could not be prepared: '+state.preparation.message+' Save again in a moment, or leave the note blank.';
+  else if(profile?.note?.trim()&&!profile.policyId)$('save-status').textContent='Saved, but your note is not prepared yet. Save again in a moment, or leave the note blank.';
+  else $('save-status').textContent='Saved.';
+}
+const SAVE_LABEL='SAVE MY LITTLE WEIRDO ↗',SAVING_MESSAGE='Hang on, your weirdo is being saved.';
 async function connect(){await wallet.connect($('wallet-choice').value||undefined);await refreshMe();status('Connected. Your sign-in note moved no coins.');await loadView(state.view);}
 async function useFreeSock(){
   if(!wallet.address)await connect();
@@ -223,7 +242,7 @@ async function useFreeSock(){
   player.pause();state.room=null;$('room-view').hidden=true;$('lobby').hidden=false;
   location.hash='#play';
   status(profile.note?.trim()&&!profile.policyId
-    ? 'Free sock selected. Your written note still needs preparation in My fighter, or you can explicitly save a blank note for a random plan.'
+    ? 'Free sock selected. Your note is not prepared yet: save your fighter again, or leave the note blank for a random plan.'
     : 'Free sock selected. No mint or Bitcoin wallet needed. Choose a room, then LET ME IN. The PIT entry is a separate approval.');
   updateEntry();
 }
@@ -542,18 +561,6 @@ $('fighter-ultimate').addEventListener('change',()=>selectUltimate('fighter-ulti
 $('save-ultimate').addEventListener('click',()=>action(()=>saveFighter({choiceOnly:true})));
 $('fighter-form').addEventListener('input',editFighterDraft);
 $('fighter-form').addEventListener('submit',event=>{event.preventDefault();action(()=>saveFighter());});
-$('clear-note').addEventListener('click',()=>{$('fighter-note').value='';editFighterDraft();status('Blank note selected. Save your fighter to use a free random plan.');});
-$('compile-note').addEventListener('click',()=>action(async()=>{
-  const note=$('fighter-note').value.trim();if(!note)throw new Error('A blank note already gets a free random plan.');
-  if(state.profileDirty||state.me?.profile?.note!==note)throw new Error('Save this note first, then ask the brain to read it.');
-  if(['queued','running'].includes(state.preparation?.status))return checkPreparation({manual:true});
-  status('Asking the brain to read your saved note. No room is entered by this request.');
-  const data=await post('/api/fighter/compile',{note,modelId:$('brain-model').value,maxCostWei:state.config?.inference?.testOnly?'0':decimalWei($('brain-limit').value)});
-  if(data.transaction||data.transactions){if(!await confirmQuote(data,'One answer for your note'))return;}
-  else showPreparation(data,{resume:true});
-  await refreshMe();status(['queued','running'].includes(state.preparation?.status)?'Your saved note is queued. Check this same request later; no second request is needed.':'The brain request is recorded. Check its receipt before sending another request.');
-}));
-$('check-brain').addEventListener('click',()=>action(()=>checkPreparation({manual:true})));
 $('mint-quantity').addEventListener('input',renderMintDesk);
 $('mint-resume').addEventListener('click',()=>action(resumeBatchMint));
 $('mint-discard').addEventListener('click',()=>action(discardUnsentMint));
@@ -570,16 +577,18 @@ window.addEventListener('hashchange',navigate);
 window.addEventListener('storage',event=>{if(event.key===null||event.key?.startsWith('the-pit.mint-batch.v2:'))renderMintDesk();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)player.pause();});
 
+// Landing hero: rotating slogans, real composed socks and a smooth scroll down to the sale.
+{const slogans=['Let it out.','Six in. One still up.','No two bad ideas alike.','Welcome to the pit.'];let shown=0;
+ if(!matchMedia('(prefers-reduced-motion: reduce)').matches)setInterval(()=>{if(!document.hidden){shown=(shown+1)%slogans.length;$('hero-slogan').textContent=slogans[shown];}},2600);
+ for(const key of [2,2000000000,0])$('hero-socks').append(img(avatarSource({key})));}
+$('hero-cta').addEventListener('click',()=>$('launch-sale').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'}));
+
 async function boot(){
   navigate(false);state.config=await api('/api/config');const cfg=state.config;navigate(false);if(cfg.paused)status(cfg.pausedMessage,true);
   $('network').textContent=(cfg.chain?.name||'Game network')+' · TESTNET';$('footer-network').textContent='Testnet only. Test coins, not real-money prizes.';
   if(cfg.pricing){$('pricing-note').hidden=false;$('pricing-note').textContent=cfg.pricing.source?.startsWith('Fixed test')?'Fixed test prices: $'+units(cfg.pricing.pitUsdE18,18,6)+' per test PIT and $'+units(cfg.pricing.ethUsdE18,18,6)+' per test ETH. These numbers are not live prices or cash values.':'Testnet only. Dollar labels are reference prices, not a cash value for these coins.';}
   $('jackpot-amount').textContent=cfg.jackpot?.amountWei!==undefined&&cfg.jackpot?.amountWei!==null?pit(cfg.jackpot.amountWei):'Temporarily unavailable';$('jackpot-detail').textContent=cfg.jackpot?.message||'1 in 200 completed paid rooms. One human winner.';
   const found=wallet.providers();$('wallet-choice').hidden=found.length<2;for(const p of found)option($('wallet-choice'),p.id,p.name);
-  $('brain-model').replaceChildren();for(const model of cfg.inference?.models||[])option($('brain-model'),model.id,model.name||model.id);if(!$('brain-model').options.length)option($('brain-model'),'','No brain connected');
-  $('brain-limit').hidden=Boolean(cfg.inference?.testOnly);document.querySelector('label[for="brain-limit"]').hidden=Boolean(cfg.inference?.testOnly);
-  if(cfg.inference?.testOnly)$('brain-cost-note').textContent='Test answers are house-paid. No PIT is charged for these test answers. A brain does not buy extra health or power.';
-  $('brain-status').textContent=brainAvailability(cfg.inference).message;
   renderMe();const initialView=state.view;
   try{await loadView(initialView);status('Six fighters. One survivor. Testnet coins only.');}
   catch(error){if(state.view===initialView)status('This page could not refresh: '+explain(error),true,initialView);}
@@ -587,7 +596,7 @@ async function boot(){
   setInterval(async()=>{
     if(document.hidden||state.busy||preparationPolling||state.preparationChecks>=60||!['queued','running'].includes(state.preparation?.status))return;
     preparationPolling=true;
-    try{await checkPreparation();}catch(error){state.preparationChecks=60;$('brain-status').textContent='Automatic checks paused: '+explain(error)+' Use Check saved answer to resume the same request.';}finally{preparationPolling=false;}
+    try{await checkPreparation();}catch(error){state.preparationChecks=60;$('save-status').textContent='Still saving in the background: '+explain(error);}finally{preparationPolling=false;}
   },5000);
   setInterval(async()=>{
     if(document.hidden||state.busy||state.polling)return;state.polling=true;const pollView=state.view;
